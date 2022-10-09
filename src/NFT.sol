@@ -4,7 +4,14 @@ pragma solidity ^0.8.17;
 import "solmate/tokens/ERC721.sol";
 import "openzeppelin-contracts/contracts/utils/Strings.sol";
 
+import {LibInput} from "@cartesi-rollups/libraries/LibInput.sol";
+
+
 contract NFT is ERC721 {
+    
+    event CartesiGenNFTRequest(address, uint256, uint256, uint256, uint256);
+    event CartesiGenNFTMint(address, uint256, uint256, uint256, uint256);
+
     uint256 public currentTokenId;
 
     constructor(
@@ -22,30 +29,48 @@ contract NFT is ERC721 {
         return Strings.toString(id);
     }
 
+    bytes32 constant INPUT_HEADER = keccak256("gen_nft");
+
     function mintRequest(uint256 id, uint256 x, uint256 y, uint256 zoom) public {
-        require(to != address(0), "INVALID_RECIPIENT");
-        require(_ownerOf[id] == address(0), "ALREADY_MINTED");
+        require(msg.sender != address(0), "INVALID_RECIPIENT");
+        require(_ownerOf[id] != address(0), "ALREADY_MINTED");
         require(id > 0 && id <= 100, "ONLY_ONE_HUNDRED");
 
         // claimed
         _ownerOf[id] = msg.sender;
 
         // call the nft portal for Cartesi
-        
+        LibInput.DiamondStorage storage inputDS = LibInput.diamondStorage();
+
+        bytes memory input = abi.encode(
+            INPUT_HEADER,
+            x, y, zoom, id
+        );
+
+        //inputDS.addInternalInput(input); // fails to compile
+
+        emit CartesiGenNFTRequest(msg.sender, id, x, y, zoom);
     }
 
+    // Cartesi callback from `mintRequest`
+    function callbackMint(bytes calldata _data) internal {
+        require(msg.sender == address(this), "only itself");
 
-    function _mint(address to, uint256 id) internal virtual override {
-        require(to != address(0), "INVALID_RECIPIENT");
+        (uint256 x, uint256 y, uint256 zoom, uint256 id) = abi
+            .decode(_data, (address, address, uint256));
 
-        require(_ownerOf[id] == address(0), "ALREADY_MINTED");
+    //    require(_ownerOf[id] != address(0), "ALREADY_MINTED");
+//
+    //    address to = _ownerOf[id];
+//
+    //    // Counter overflow is incredibly unrealistic.
+    //    unchecked {
+    //        _balanceOf[_ownerOf[id]]++;
+    //    }
 
-        // Counter overflow is incredibly unrealistic.
-        unchecked {
-            _balanceOf[to]++;
-        }
+        emit CartesiGenNFTMint(_ownerOf[id], id, x, y, zoom);
 
-
-        emit Transfer(address(0), to, id);
+        //emit Transfer(address(0), _ownerOf[id], id);
     }
+    
 }
